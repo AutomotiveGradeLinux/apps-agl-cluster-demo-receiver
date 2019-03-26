@@ -20,6 +20,8 @@
 #include <gst/gst.h>
 #include "surface.hpp"
 
+#undef DEBUG
+
 int main(int argc, char *argv[])
 {
 	int port = 0;
@@ -49,11 +51,30 @@ int main(int argc, char *argv[])
 	//
 	//     videotestsrc pattern=smpte ! video/x-raw,format=BGRx,width=384,height=368 ! waylandsink
 	//
+
 	std::string pipeline_str = \
-		"udpsrc port=5005 ! application/x-rtp,media=video,encoding-name=H264 ! queue ! rtph264depay ! h264parse config-interval=1 disable-passthrough=true ! decodebin ! vaapisink";
+		"udpsrc port=5005 ! application/x-rtp,media=video,encoding-name=H264 ! queue ! rtph264depay ! h264parse config-interval=1 disable-passthrough=true ! decodebin ! ";
+	GstPlugin *plugin = gst_registry_find_plugin(gst_registry_get (), "vaapisink");
+	if(plugin) {
+		pipeline_str += "vaapisink";
+		gst_object_unref(plugin);
+	} else {
+		pipeline_str += "videoconvert ! video/x-raw,format=BGRx,width=384,height=368 ! waylandsink";
+	}
+#ifdef DEBUG
+	std::cout << "Using pipeline: " << pipeline_str << std::endl;
+#endif
 
         // Initialize GStreamer
+#ifdef DEBUG
+	int gargc = 2;
+	char **gargv = (char**) malloc(2 * sizeof(char*));
+	gargv[0] = strdup(argv[0]);
+	gargv[1] = strdup("--gst-debug-level=2");
+	gst_init(&gargc, &gargv);
+#else
         gst_init(NULL, NULL);
+#endif
 
 	// Create our IVI surface handler
 	SurfaceHandler handler(port, token, role);
