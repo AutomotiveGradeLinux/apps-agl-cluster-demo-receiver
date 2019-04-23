@@ -31,10 +31,10 @@ add_executable(${TARGET_NAME}
 )
 
 pkg_check_modules(GSTREAMER REQUIRED gstreamer-1.0)
-pkg_check_modules(ILMCONTROL REQUIRED ilmControl)
+pkg_check_modules(ILMCOMMON REQUIRED ilmCommon)
 
 include_directories(
-	  "${ILMCONTROL_INCLUDE_DIRS}"
+	  "${ILMCOMMON_INCLUDE_DIRS}"
 	  "${GSTREAMER_INCLUDE_DIRS}"
 )
 
@@ -50,5 +50,5 @@ set_target_properties(${TARGET_NAME} PROPERTIES
 target_link_libraries(${TARGET_NAME}
 	windowmanager
 	${GSTREAMER_LIBRARIES}
-	${ILMCONTROL_LIBRARIES}
+	${ILMCOMMON_LIBRARIES}
 )
