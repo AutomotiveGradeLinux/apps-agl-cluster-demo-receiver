@@ -53,13 +53,13 @@ int main(int argc, char *argv[])
 	//
 
 	std::string pipeline_str = \
-		"udpsrc port=5005 ! application/x-rtp,media=video,encoding-name=H264 ! queue ! rtph264depay ! h264parse config-interval=1 disable-passthrough=true ! decodebin ! ";
+		"rtpbin name=rtpbin udpsrc caps=\"application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=JPEG,payload=26\" port=5005 !    rtpbin.recv_rtp_sink_0 rtpbin. ! rtpjpegdepay ! jpegdec ! ";
 	GstPlugin *plugin = gst_registry_find_plugin(gst_registry_get (), "vaapisink");
 	if(plugin) {
 		pipeline_str += "vaapisink";
 		gst_object_unref(plugin);
 	} else {
-		pipeline_str += "videoconvert ! video/x-raw,format=BGRx,width=384,height=368 ! waylandsink";
+		pipeline_str += "waylandsink";
 	}
 #ifdef DEBUG
 	std::cout << "Using pipeline: " << pipeline_str << std::endl;
