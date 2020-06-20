@@ -32,63 +32,23 @@
 #include <map>
 #include <algorithm>
 
-#include <ilm/ilm_control.h> 
-#include <libwindowmanager.h>
-
-class ILMControl
-{
-public:
-	ILMControl(notificationFunc callback, void *user_data) {
-		ilm_init();
-		ilm_registerNotification(callback, user_data);
-	}
-
-	~ILMControl(void) {
-		ilm_unregisterNotification();
-		ilm_destroy();
-	}
-};
+#include "shell-desktop.h"
 
 class SurfaceHandler
 {
 public:
 	SurfaceHandler(const int port, const std::string &token, const std::string &role);
-
-	void notify_ivi_control_cb(ilmObjectType object,
-				   t_ilm_uint id,
-				   t_ilm_bool created);
-
-	static void notify_ivi_control_cb_static (ilmObjectType object,
-						  t_ilm_uint id,
-						  t_ilm_bool created,
-						  void *user_data);
+	void set_bounding_box(int x, int y, int bx, int by, int width, int height);
 
 private:
 	int m_port;
 	std::string m_token;
-
 	std::string m_role;
 
-	int m_rid = 0;
+	int init_agl_shell(void);
 
-	LibWindowmanager *m_wm;
-	ILMControl *m_ic;
-
-	std::vector<pid_t> m_pid_v;
-
-	std::map<int, int> m_surfaces;  // pair of <afm:rid, ivi:id>
-
-	//bool m_pending_create = false;
-	bool m_pending_create = true;
-
-	// Private functions
-
-	int init_wm(void);
-
-	void register_surfpid(pid_t surf_pid);
-	void unregister_surfpid(pid_t surf_pid);
-	pid_t find_surfpid_by_rid(pid_t rid);
-	void setup_surface(int id);
+	struct agl_shell_desktop *shell;
+	Shell *aglShell;
 };
 
 #endif // SURFACE_HPP

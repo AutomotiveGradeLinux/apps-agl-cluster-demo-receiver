@@ -18,24 +18,67 @@
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
 set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(OE_QMAKE_PATH_EXTERNAL_HOST_BINS $ENV{OE_QMAKE_PATH_HOST_BINS})
 
+find_package(Qt5 COMPONENTS Core Gui QuickControls2 QuickWidgets REQUIRED)
+find_package(Qt5Gui ${QT_MIN_VERSION} CONFIG REQUIRED Private)
 find_package(PkgConfig REQUIRED)
+find_program(WAYLAND_SCANNER_EXECUTABLE NAMES wayland-scanner)
 
 PROJECT_TARGET_ADD(cluster-receiver)
+
+add_custom_command(
+	OUTPUT  agl-shell-desktop-client-protocol.h
+	COMMAND ${WAYLAND_SCANNER_EXECUTABLE} client-header
+	< ${CMAKE_SOURCE_DIR}/app/protocol/agl-shell-desktop.xml
+	> ${CMAKE_SOURCE_DIR}/app/agl-shell-desktop-client-protocol.h
+	DEPENDS ${CMAKE_SOURCE_DIR}/app/protocol/agl-shell-desktop.xml
+)
+
+
+add_custom_command(
+	OUTPUT  ${CMAKE_BINARY_DIR}/app/agl-shell-desktop-client-protocol.h
+	COMMAND ${WAYLAND_SCANNER_EXECUTABLE} client-header
+	< ${CMAKE_SOURCE_DIR}/app/protocol/agl-shell-desktop.xml
+	> ${CMAKE_SOURCE_DIR}/app/agl-shell-desktop-client-protocol.h
+	DEPENDS ${CMAKE_SOURCE_DIR}/app/protocol/agl-shell-desktop.xml
+)
+
+add_custom_command(
+	OUTPUT  agl-shell-desktop-protocol.c
+	COMMAND ${WAYLAND_SCANNER_EXECUTABLE} code
+	< ${CMAKE_SOURCE_DIR}/app/protocol/agl-shell-desktop.xml
+	> ${CMAKE_BINARY_DIR}/app/agl-shell-desktop-protocol.c
+	DEPENDS ${CMAKE_SOURCE_DIR}/app/protocol/agl-shell-desktop.xml
+)
+
+pkg_check_modules(GSTREAMER REQUIRED gstreamer-1.0)
+pkg_check_modules(GSTREAMER_PLUGINS_BASE REQUIRED gstreamer-plugins-base-1.0)
+pkg_check_modules(GSTREAMER_VIDEO REQUIRED gstreamer-video-1.0)
+pkg_check_modules(GSTREAMER_PLUGINS_BAD REQUIRED gstreamer-plugins-bad-1.0)
+
+pkg_check_modules(WAYLAND_CLIENT REQUIRED wayland-client)
+pkg_check_modules(QTAPPFW REQUIRED qtappfw-signal-composer)
 
 add_executable(${TARGET_NAME}
 	main.cpp
 	surface.cpp
+	agl-shell-desktop-protocol.c
+	agl-shell-desktop-client-protocol.h
+	shell-desktop.cpp
 	${RESOURCES}
 )
 
-pkg_check_modules(GSTREAMER REQUIRED gstreamer-1.0)
-pkg_check_modules(ILMCOMMON REQUIRED ilmCommon)
-
 include_directories(
-	  "${ILMCOMMON_INCLUDE_DIRS}"
-	  "${GSTREAMER_INCLUDE_DIRS}"
+	include_directories(${Qt5Gui_PRIVATE_INCLUDE_DIRS})
+	${QTAPPFW_INCLUDE_DIRS}
+	"${GSTREAMER_INCLUDE_DIRS}"
+	"${GSTREAMER_PLUGINS_BASE_INCLUDE_DIRS}"
+	"${GSTREAMER_PLUGINS_BAD_INCLUDE_DIRS}"
+	"${GSTREAMER_VIDEO_INCLUDE_DIRS}"
 )
 
 set_target_properties(${TARGET_NAME} PROPERTIES
@@ -48,7 +91,13 @@ set_target_properties(${TARGET_NAME} PROPERTIES
 )
 
 target_link_libraries(${TARGET_NAME}
-	windowmanager
+	Qt5::QuickControls2
+	Qt5::QuickWidgets
 	${GSTREAMER_LIBRARIES}
-	${ILMCOMMON_LIBRARIES}
+	"${GSTREAMER_PLUGINS_BASE_LIBRARIES}"
+	"${GSTREAMER_PLUGINS_BAD_LIBRARIES}"
+	"${GSTREAMER_VIDEO_LIBRARIES}"
+	${QTAPPFW_LIBRARIES}
+	${WAYLAND_CLIENT_LIBRARIES}
+	-lgstwayland-1.0
 )

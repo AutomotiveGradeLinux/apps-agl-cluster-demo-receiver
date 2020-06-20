@@ -26,7 +26,86 @@
 #include "surface.hpp"
 #include "hmi-debug.h"
 
-#define AREA_NORMAL_FULL "normal.full"
+#include <QGuiApplication>
+#include <QtGui/QGuiApplication>
+#include <qpa/qplatformnativeinterface.h>
+
+#include <QObject>
+#include <QString>
+#include <QScreen>
+#include <QWindow>
+
+#include "agl-shell-desktop-client-protocol.h"
+
+static void
+global_add(void *data, struct wl_registry *reg, uint32_t name,
+		const char *interface, uint32_t version)
+{
+	struct agl_shell_desktop **shell =
+		static_cast<struct agl_shell_desktop **>(data);
+
+	if (strcmp(interface, agl_shell_desktop_interface.name) == 0) {
+		*shell = static_cast<struct agl_shell_desktop *>(
+			wl_registry_bind(reg, name, &agl_shell_desktop_interface, version)
+		);
+	}
+}
+
+static void
+global_remove(void *data, struct wl_registry *reg, uint32_t id)
+{
+	(void) data;
+	(void) reg;
+	(void) id;
+}
+
+static const struct wl_registry_listener registry_listener = {
+	global_add,
+	global_remove,
+};
+
+
+static void
+application_id_event(void *data, struct agl_shell_desktop *agl_shell_desktop,
+		const char *app_id)
+{
+
+}
+
+static void
+application_id_state(void *data, struct agl_shell_desktop *agl_shell_desktop,
+		const char *app_id, const char *app_data,
+		uint32_t app_state, uint32_t app_role)
+{
+	(void) app_data;
+	(void) agl_shell_desktop;
+	(void) app_id;
+	(void) app_state;
+	(void) app_role;
+}
+
+static const struct agl_shell_desktop_listener agl_shell_desk_listener = {
+	application_id_event,
+	application_id_state,
+};
+
+static struct agl_shell_desktop *
+register_agl_shell_desktop(QPlatformNativeInterface *native)
+{
+	struct wl_display *wl;
+	struct wl_registry *registry;
+	struct agl_shell_desktop *shell = nullptr;
+
+	wl = static_cast<struct wl_display *>(native->nativeResourceForIntegration("display"));
+	registry = wl_display_get_registry(wl);
+
+	wl_registry_add_listener(registry, &registry_listener, &shell);
+	// Roundtrip to get all globals advertised by the compositor
+	wl_display_roundtrip(wl);
+	wl_registry_destroy(registry);
+
+	return shell;
+}
 
 SurfaceHandler::SurfaceHandler(const int port, const std::string &token, const std::string &role)
 {
@@ -34,160 +113,34 @@ SurfaceHandler::SurfaceHandler(const int port, const std::string &token, const s
 	m_token = token;
 	m_role = role;
 
-	m_rid = getpid();
-
-	// Setup HomeScreen/WindowManager API
-	if (init_wm()) {
-		HMI_ERROR("receiver:sh", "cannot setup windowmanager API");
+	if (init_agl_shell()) {
 		exit(1);
 	}
 
-	// Setup ilmController API
-	m_ic = new ILMControl(notify_ivi_control_cb_static, this);
-	if (!m_ic) {
-		HMI_ERROR("receiver:sh", "cannot setup IVI layer management API");
-		exit(1);
-	}
+	agl_shell_desktop_add_listener(shell, &agl_shell_desk_listener, this);
 }
 
-int SurfaceHandler::init_wm(void)
+int
+SurfaceHandler::init_agl_shell(void)
 {
-	m_wm = new LibWindowmanager();
-	if (m_wm->init(m_port, m_token.c_str())) {
-		HMI_ERROR("receiver:sh", "cannot initialize windowmanager");
+	QPlatformNativeInterface *native = qApp->platformNativeInterface();
+	shell = register_agl_shell_desktop(native);
+	if (!shell) {
 		return -1;
 	}
 
-	std::function< void(json_object*) > h_active =
-		[](json_object* object) {
-			HMI_DEBUG("receiver:sh", "Got Event_Active");
-		};
+	std::shared_ptr<struct agl_shell_desktop>
+		agl_shell{shell, agl_shell_desktop_destroy};
 
-	std::function< void(json_object*) > h_inactive =
-		[](json_object* object) {
-			HMI_DEBUG("receiver:sh", "Got Event_Inactive");
-		};
-
-	std::function< void(json_object*) > h_visible =
-		[](json_object* object) {
-			HMI_DEBUG("receiver:sh", "Got Event_Visible");
-		};
-
-	std::function< void(json_object*) > h_invisible =
-		[](json_object* object) {
-			HMI_DEBUG("receiver:sh", "Got Event_Invisible");
-		};
-
-	std::function< void(json_object*) > h_syncdraw =
-		[this](json_object* object) {
-			HMI_DEBUG("receiver:sh", "Got Event_SyncDraw");
-			this->m_wm->endDraw(this->m_role.c_str());
-		};
-
-	std::function< void(json_object*) > h_flushdraw =
-		[](json_object* object) {
-			HMI_DEBUG("receiver:sh", "Got Event_FlushDraw");
-		};
-
-	m_wm->set_event_handler(LibWindowmanager::Event_Active, h_active);
-	m_wm->set_event_handler(LibWindowmanager::Event_Inactive, h_inactive);
-	m_wm->set_event_handler(LibWindowmanager::Event_Visible, h_visible);
-	m_wm->set_event_handler(LibWindowmanager::Event_Invisible, h_invisible);
-	m_wm->set_event_handler(LibWindowmanager::Event_SyncDraw, h_syncdraw);
-	m_wm->set_event_handler(LibWindowmanager::Event_FlushDraw, h_flushdraw);
+	aglShell = new Shell(agl_shell, nullptr);
 
 	return 0;
 }
 
-void SurfaceHandler::notify_ivi_control_cb(ilmObjectType object,
-					   t_ilm_uint id,
-					   t_ilm_bool created)
+void
+SurfaceHandler::set_bounding_box(int x, int y, int bx, int by, int width, int height)
 {
-	if (object == ILM_SURFACE) {
-		struct ilmSurfaceProperties surf_props;
-
-		ilm_getPropertiesOfSurface(id, &surf_props);
-		pid_t surf_pid = surf_props.creatorPid;
-
-		if (!created) {
-			HMI_DEBUG("receiver:sh", "ivi surface (id=%d, pid=%d) destroyed.", id, surf_pid);
-			unregister_surfpid(surf_pid);
-			m_surfaces.erase(surf_pid);
-			return;
-		}
-
-		HMI_DEBUG("receiver:sh", "ivi surface (id=%d, pid=%d) is created.", id, surf_pid);
-
-		register_surfpid(surf_pid);
-		if (m_rid && surf_pid == find_surfpid_by_rid(m_rid)) {
-			setup_surface(id);
-		}
-		m_surfaces[surf_pid] = id;
-	} else if (object == ILM_LAYER) {
-		if (created)
-			HMI_DEBUG("receiver:sh", "ivi layer: %d created.", id);
-		else
-			HMI_DEBUG("receiver:sh", "ivi layer: %d destroyed.", id);
-	}
-
-}
-
-void SurfaceHandler::notify_ivi_control_cb_static (ilmObjectType object,
-						   t_ilm_uint id,
-						   t_ilm_bool created,
-						   void *user_data)
-{
-	SurfaceHandler *handler = static_cast<SurfaceHandler*>(user_data);
-	handler->notify_ivi_control_cb(object, id, created);
-}
-
-void SurfaceHandler::register_surfpid (pid_t surf_pid)
-{
-	if (surf_pid == m_rid) {
-		if (!std::count(m_pid_v.begin(), m_pid_v.end(), surf_pid)) {
-			HMI_DEBUG("receiver:sh", "surface creator(pid=%d) registered", surf_pid);
-			m_pid_v.push_back(surf_pid);
-			HMI_DEBUG("receiver:sh", "m_pid_v.count(%d) = %d", surf_pid,
-				  std::count(m_pid_v.begin(), m_pid_v.end(), surf_pid));
-		}
-	}
-}
-
-void SurfaceHandler::unregister_surfpid (pid_t surf_pid)
-{
-	auto itr = m_pid_v.begin();
-	while (itr != m_pid_v.end()) {
-		if (*itr == surf_pid) {
-			m_pid_v.erase(itr++);
-		} else {
-			++itr;
-		}
-	}
-}
-
-pid_t SurfaceHandler::find_surfpid_by_rid (pid_t rid)
-{
-	HMI_DEBUG("receiver:sh", "find surfpid by rid(%d)", rid);
-	if (std::count(m_pid_v.begin(), m_pid_v.end(), rid)) {
-		HMI_DEBUG("receiver:sh", "found return(%d)", rid);
-		return rid;
-	}
-
-	return -1;
-}
-
-void SurfaceHandler::setup_surface (int id)
-{
-	std::string sid = std::to_string(id);
-
-	// This surface is mine, register pair app_name and ivi id.
-	HMI_DEBUG("receiver:sh", "requestSurfaceXDG(%s,%d)", m_role.c_str(), id);
-	m_wm->requestSurfaceXDG(m_role.c_str(), id);
-
-	if (m_pending_create) {
-		// Activate window if it has not been yet
-		HMI_DEBUG("receiver:sh", "calling activateWindow on (%s,%d)", m_role.c_str(), id);
-		m_pending_create = false;
-		m_wm->activateWindow(m_role.c_str(), AREA_NORMAL_FULL);
-	}
+	QString app_id = QString::fromUtf8(m_role.c_str(), -1);
+	aglShell->set_window_props(app_id, AGL_SHELL_DESKTOP_APP_ROLE_POPUP,
+				   x, y, bx, by, width, height);
 }
