@@ -186,32 +186,11 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	// NOTES:
-	// (1) For reference, the pipeline used is based on the gst-launch-1.0 command in the ad hoc unit
-        //     file in the previous hand-rolled CES demo:
-	//
-	//     udpsrc port=5005 ! application/x-rtp,media=video,encoding-name=H264 ! queue ! rtph264depay ! h264parse config-interval=1 disable-passthrough=true ! decodebin ! vaapisink
-	//
-	// (2) waylandsink is a bit broken, as it needs a RGB format, but its caps include non-RGB formats
-	//     This results in crashes when videoconvert doesn't end up in the pipeline, so care must be taken
-	//     if it is used, e.g. for testing:
-	//
-	//     videotestsrc pattern=smpte ! video/x-raw,format=BGRx,width=384,height=368 ! waylandsink
-	//
-
 	std::string pipeline_str = \
-		"rtpbin name=rtpbin udpsrc caps=\"application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=JPEG,payload=26\" port=5005 ! rtpbin.recv_rtp_sink_0 rtpbin. ! rtpjpegdepay ! jpegdec ! ";
-		//"rtpbin name=rtpbin udpsrc caps=\"application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=JPEG,payload=26\" port=5005 ! rtpbin.recv_rtp_sink_0 rtpbin. ! rtpjpegdepay ! jpegdec";
-	GstPlugin *plugin = gst_registry_find_plugin(gst_registry_get(), "vaapisink");
-
-	if (plugin) {
-		std::cout << "Using va api sink" << std::endl;
-		pipeline_str += "vaapisink";
-		gst_object_unref(plugin);
-	} else {
-		std::cout << "Using wayland sink" << std::endl;
-		pipeline_str += "waylandsink";
-	}
+		"rtpbin name=rtpbin udpsrc "
+		"caps=\"application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=JPEG,payload=26\" "
+		"port=5005 ! rtpbin.recv_rtp_sink_0 rtpbin. ! "
+		"rtpjpegdepay ! jpegdec ! waylandsink";
 
 	gst_init(&gargc, &gargv);
 
