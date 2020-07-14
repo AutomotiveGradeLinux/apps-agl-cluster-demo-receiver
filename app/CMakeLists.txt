@@ -1,7 +1,9 @@
 ###########################################################################
 # Copyright 2018 Konsulko Group
+# Copyright 2020 Collabora, Ltd.
 #
 # Author: Scott Murray <scott.murray@konsulko.com>
+# Author: Marius Vlad <marius.vlad@collabora.com>
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,18 +19,13 @@
 ###########################################################################
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTORCC ON)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(OE_QMAKE_PATH_EXTERNAL_HOST_BINS $ENV{OE_QMAKE_PATH_HOST_BINS})
 
-find_package(Qt5 COMPONENTS Core Gui QuickControls2 QuickWidgets REQUIRED)
-find_package(Qt5Gui ${QT_MIN_VERSION} CONFIG REQUIRED Private)
 find_package(PkgConfig REQUIRED)
 find_program(WAYLAND_SCANNER_EXECUTABLE NAMES wayland-scanner)
 
-PROJECT_TARGET_ADD(cluster-receiver)
+PROJECT_TARGET_ADD(xdg-cluster-receiver)
 
 add_custom_command(
 	OUTPUT  agl-shell-desktop-client-protocol.h
@@ -55,25 +52,51 @@ add_custom_command(
 	DEPENDS ${CMAKE_SOURCE_DIR}/app/protocol/agl-shell-desktop.xml
 )
 
+
 pkg_check_modules(GSTREAMER REQUIRED gstreamer-1.0)
 pkg_check_modules(GSTREAMER_PLUGINS_BASE REQUIRED gstreamer-plugins-base-1.0)
 pkg_check_modules(GSTREAMER_VIDEO REQUIRED gstreamer-video-1.0)
 pkg_check_modules(GSTREAMER_PLUGINS_BAD REQUIRED gstreamer-plugins-bad-1.0)
 
 pkg_check_modules(WAYLAND_CLIENT REQUIRED wayland-client)
+pkg_check_modules(WAYLAND_PROTOCOLS REQUIRED wayland-protocols>=1.18)
+pkg_get_variable(WAYLAND_PROTOCOLS_BASE wayland-protocols pkgdatadir)
+
+add_custom_command(
+	OUTPUT  xdg-shell-client-protocol.h
+	COMMAND ${WAYLAND_SCANNER_EXECUTABLE} client-header
+	< ${WAYLAND_PROTOCOLS_BASE}/stable/xdg-shell/xdg-shell.xml
+	> ${CMAKE_SOURCE_DIR}/app/xdg-shell-client-protocol.h
+	DEPENDS ${WAYLAND_PROTOCOLS_BASE}/stable/xdg-shell/xdg-shell.xml
+)
+
+
+add_custom_command(
+	OUTPUT  ${CMAKE_BINARY_DIR}/app/xdg-shell-client-protocol.h
+	COMMAND ${WAYLAND_SCANNER_EXECUTABLE} client-header
+	< ${WAYLAND_PROTOCOLS_BASE}/stable/xdg-shell/xdg-shell.xml
+	> ${CMAKE_SOURCE_DIR}/app/xdg-shell-client-protocol.h
+	DEPENDS ${WAYLAND_PROTOCOLS_BASE}/stable/xdg-shell/xdg-shell.xml
+)
+
+add_custom_command(
+	OUTPUT  xdg-shell-protocol.c
+	COMMAND ${WAYLAND_SCANNER_EXECUTABLE} code
+	< ${WAYLAND_PROTOCOLS_BASE}/stable/xdg-shell/xdg-shell.xml
+	> ${CMAKE_BINARY_DIR}/app/xdg-shell-protocol.c
+	DEPENDS ${WAYLAND_PROTOCOLS_BASE}/stable/xdg-shell/xdg-shell.xml
+)
 
 add_executable(${TARGET_NAME}
 	main.cpp
-	surface.cpp
 	agl-shell-desktop-protocol.c
 	agl-shell-desktop-client-protocol.h
-	shell-desktop.cpp
+	xdg-shell-protocol.c
+	xdg-shell-client-protocol.h
 	${RESOURCES}
 )
 
 include_directories(
-	include_directories(${Qt5Gui_PRIVATE_INCLUDE_DIRS})
-	${QTAPPFW_INCLUDE_DIRS}
 	"${GSTREAMER_INCLUDE_DIRS}"
 	"${GSTREAMER_PLUGINS_BASE_INCLUDE_DIRS}"
 	"${GSTREAMER_PLUGINS_BAD_INCLUDE_DIRS}"
@@ -90,13 +113,10 @@ set_target_properties(${TARGET_NAME} PROPERTIES
 )
 
 target_link_libraries(${TARGET_NAME}
-	Qt5::QuickControls2
-	Qt5::QuickWidgets
 	${GSTREAMER_LIBRARIES}
 	"${GSTREAMER_PLUGINS_BASE_LIBRARIES}"
 	"${GSTREAMER_PLUGINS_BAD_LIBRARIES}"
 	"${GSTREAMER_VIDEO_LIBRARIES}"
-	${QTAPPFW_LIBRARIES}
 	${WAYLAND_CLIENT_LIBRARIES}
 	-lgstwayland-1.0
 )

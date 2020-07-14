@@ -1,9 +1,11 @@
 ###########################################################################
 # Copyright 2015-2018 IoT.bzh
 # Copyright 2018,2019 Konsulko Group
+# Copyright 2020 Collabora Ltd.
 #
 # author: Fulup Ar Foll <fulup@iot.bzh>
 # cluster-receiver: Scott Murray <scott.murray@konsulko.com>
+# xdg-cluster-receiver: Marius Vlad <marius.vlad@collabora.com>
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,15 +22,15 @@
 
 # Project Info
 # ------------------
-set(PROJECT_NAME cluster-receiver)
+set(PROJECT_NAME xdg-cluster-receiver)
 set(PROJECT_PRETTY_NAME "Cluster Receiver Demo")
 set(PROJECT_DESCRIPTION "Cluster receiver demo application")
-set(PROJECT_URL "https://gerrit.automotivelinux.org/gerrit/apps/agl-cluster-demo-receiver")
+set(PROJECT_URL "https://gerrit.automotivelinux.org/gerrit/app/xdg-cluster-demo-receiver.git")
 set(PROJECT_VERSION "1.0")
 set(PROJECT_ICON "icon.png")
-set(PROJECT_AUTHOR "Scott Murray")
-set(PROJECT_AUTHOR_MAIL "scott.murray@konsulko.com")
-set(PROJECT_LICENSE "APL2.0")
+set(PROJECT_AUTHOR "Marius Vlad")
+set(PROJECT_AUTHOR_MAIL "marius.vlad@collabora.com")
+set(PROJECT_LICENSE "MIT")
 set(PROJECT_LANGUAGES "CXX")
 
 # Where are stored the project configuration files
@@ -155,7 +157,7 @@ set(WIDGET_TYPE application/vnd.agl.native)
 # This is the file that will be executed, loaded,
 # at launch time by the application framework.
 #
-set(WIDGET_ENTRY_POINT bin/cluster-receiver)
+set(WIDGET_ENTRY_POINT bin/xdg-cluster-receiver)
 
 # Optional dependencies order
 # ---------------------------
