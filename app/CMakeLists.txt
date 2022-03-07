@@ -1,5 +1,5 @@
 ###########################################################################
-# Copyright 2018 Konsulko Group
+# Copyright 2018,2022 Konsulko Group
 # Copyright 2020 Collabora, Ltd.
 #
 # Author: Scott Murray <scott.murray@konsulko.com>
@@ -18,18 +18,23 @@
 # limitations under the License.
 ###########################################################################
 
-set(CMAKE_INCLUDE_CURRENT_DIR ON)
+
+project(xdg-cluster-receiver VERSION 2.0.0 LANGUAGES CXX)
+
+if(CMAKE_VERSION VERSION_LESS "3.7.0")
+    set(CMAKE_INCLUDE_CURRENT_DIR ON)
+endif()
+set(OE_QMAKE_PATH_EXTERNAL_HOST_BINS $ENV{OE_QMAKE_PATH_HOST_BINS})
+
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(PkgConfig REQUIRED)
 find_program(WAYLAND_SCANNER_EXECUTABLE NAMES wayland-scanner)
 
-pkg_check_modules(AGL_COMPOSITOR_PROTOCOLS REQUIRED agl-compositor-0.0.19-protocols)
-pkg_get_variable(AGL_COMPOSITOR_PROTOCOLS_PKGDATADIR agl-compositor-0.0.19-protocols pkgdatadir)
+pkg_check_modules(AGL_COMPOSITOR_PROTOCOLS REQUIRED agl-compositor-0.0.20-protocols)
+pkg_get_variable(AGL_COMPOSITOR_PROTOCOLS_PKGDATADIR agl-compositor-0.0.20-protocols pkgdatadir)
 set(AGL_COMPOSITOR_PROTOCOLS_PATH ${AGL_COMPOSITOR_PROTOCOLS_PKGDATADIR})
-
-PROJECT_TARGET_ADD(xdg-cluster-receiver)
 
 add_custom_command(
 	OUTPUT  agl-shell-desktop-client-protocol.h
@@ -38,7 +43,6 @@ add_custom_command(
 	> ${CMAKE_SOURCE_DIR}/app/agl-shell-desktop-client-protocol.h
 	DEPENDS ${AGL_COMPOSITOR_PROTOCOLS_PATH}/agl-shell-desktop.xml
 )
-
 
 add_custom_command(
 	OUTPUT  ${CMAKE_BINARY_DIR}/app/agl-shell-desktop-client-protocol.h
@@ -55,7 +59,6 @@ add_custom_command(
 	> ${CMAKE_BINARY_DIR}/app/agl-shell-desktop-protocol.c
 	DEPENDS ${AGL_COMPOSITOR_PROTOCOLS_PATH}/agl-shell-desktop.xml
 )
-
 
 pkg_check_modules(GSTREAMER REQUIRED gstreamer-1.0)
 pkg_check_modules(GSTREAMER_PLUGINS_BASE REQUIRED gstreamer-plugins-base-1.0)
@@ -74,7 +77,6 @@ add_custom_command(
 	DEPENDS ${WAYLAND_PROTOCOLS_BASE}/stable/xdg-shell/xdg-shell.xml
 )
 
-
 add_custom_command(
 	OUTPUT  ${CMAKE_BINARY_DIR}/app/xdg-shell-client-protocol.h
 	COMMAND ${WAYLAND_SCANNER_EXECUTABLE} client-header
@@ -91,7 +93,7 @@ add_custom_command(
 	DEPENDS ${WAYLAND_PROTOCOLS_BASE}/stable/xdg-shell/xdg-shell.xml
 )
 
-add_executable(${TARGET_NAME}
+add_executable(${PROJECT_NAME}
 	main.cpp
 	agl-shell-desktop-protocol.c
 	agl-shell-desktop-client-protocol.h
@@ -107,16 +109,7 @@ include_directories(
 	"${GSTREAMER_VIDEO_INCLUDE_DIRS}"
 )
 
-set_target_properties(${TARGET_NAME} PROPERTIES
-	LABELS "EXECUTABLE"
-	PREFIX ""
-	COMPILE_FLAGS "${EXTRAS_CFLAGS} -DFOR_AFB_BINDING"
-	LINK_FLAGS "${BINDINGS_LINK_FLAG}"
-	LINK_LIBRARIES "${EXTRAS_LIBRARIES}"
-	OUTPUT_NAME "${TARGET_NAME}"
-)
-
-target_link_libraries(${TARGET_NAME}
+target_link_libraries(${PROJECT_NAME}
 	${GSTREAMER_LIBRARIES}
 	"${GSTREAMER_PLUGINS_BASE_LIBRARIES}"
 	"${GSTREAMER_PLUGINS_BAD_LIBRARIES}"
@@ -124,3 +117,5 @@ target_link_libraries(${TARGET_NAME}
 	${WAYLAND_CLIENT_LIBRARIES}
 	-lgstwayland-1.0
 )
+
+install(TARGETS ${PROJECT_NAME} DESTINATION bin)
