@@ -38,6 +38,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <assert.h>
+#include <glib.h>
 
 #include "xdg-shell-client-protocol.h"
 #include "agl-shell-desktop-client-protocol.h"
@@ -48,12 +49,16 @@
 #include <gst/video/videooverlay.h>
 #include <gst/wayland/wayland.h>
 
-#define WINDOW_WIDTH_SIZE	640
-#define WINDOW_HEIGHT_SIZE	720
+#define WINDOW_WIDTH	640
+#define WINDOW_HEIGHT	720
 
-#define WINDOW_WIDTH_POS_X	640
-#define WINDOW_WIDTH_POS_Y	180
+#define WINDOW_POS_X	640
+#define WINDOW_POS_Y	180
 
+unsigned g_window_width = WINDOW_WIDTH;
+unsigned g_window_height = WINDOW_HEIGHT;
+unsigned g_window_pos_x = WINDOW_POS_X;
+unsigned g_window_pos_y = WINDOW_POS_Y;
 
 // C++ requires a cast and we in wayland we do the cast implictly
 #define WL_ARRAY_FOR_EACH(pos, array, type) \
@@ -645,12 +650,12 @@ handle_xdg_toplevel_configure(void *data, struct xdg_toplevel *xdg_toplevel,
 		window->height = height;
 	} else if (!window->fullscreen && !window->maximized) {
 		if (width == 0)
-			window->width = WINDOW_WIDTH_SIZE;
+			window->width = g_window_width;
 		else
 			window->width = width;
 
 		if (height == 0)
-			window->height = WINDOW_HEIGHT_SIZE;
+			window->height = g_window_height;
 		else
 			window->height = height;
 	}
@@ -792,6 +797,45 @@ destroy_display(struct display *display)
 	free(display);
 }
 
+void read_config(void)
+{
+	GKeyFile *conf_file;
+	gchar *value;
+
+	// Load settings from configuration file if it exists
+	conf_file = g_key_file_new();
+	if(conf_file &&
+	   g_key_file_load_from_dirs(conf_file,
+				     "AGL.conf",
+				     (const gchar**) g_get_system_config_dirs(),
+				     NULL,
+				     G_KEY_FILE_KEEP_COMMENTS,
+				     NULL) == TRUE) {
+		GError *err = NULL;
+		value = g_key_file_get_string(conf_file,
+					      "receiver",
+					      "geometry",
+					      &err);
+		if(value) {
+			int n;
+			unsigned width, height, x, y;
+			n = sscanf(value, "%ux%u+%u,%u", &width, &height, &x, &y);
+			if (n == 4) {
+				g_window_width = width;
+				g_window_height = height;
+				g_window_pos_x = x;
+				g_window_pos_y = y;
+				printf("Using window geometry %dx%d+%d,%d",
+				       g_window_width, g_window_height, g_window_pos_x, g_window_pos_y);
+			} else {
+				fprintf(stderr, "Invalid value for \"geometry\" key!");
+			}
+		} else {
+			fprintf(stderr, "Invalid value for \"geometry\" key!");
+		}
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	int ret = 0;
@@ -818,6 +862,8 @@ int main(int argc, char *argv[])
 		"port=5005 ! rtpbin.recv_rtp_sink_0 rtpbin. ! "
 		"rtpjpegdepay ! jpegdec ! waylandsink";
 
+	read_config();
+
 	gst_init(&gargc, &gargv);
 
 	std::cout << "Using pipeline: " << pipeline_str << std::endl;
@@ -831,15 +877,15 @@ int main(int argc, char *argv[])
 	// surface area is the same as the bounding box.
 	agl_shell_desktop_set_app_property(display->agl_shell_desktop, role.c_str(),
 					   AGL_SHELL_DESKTOP_APP_ROLE_POPUP,
-					   WINDOW_WIDTH_POS_X, WINDOW_WIDTH_POS_Y,
-					   0, 0, WINDOW_WIDTH_SIZE, WINDOW_HEIGHT_SIZE,
+					   g_window_pos_x, g_window_pos_y,
+					   0, 0, g_window_width, g_window_height,
 					   display->wl_output);
 
 	// we use the role to set a correspondence between the top level
 	// surface and our application, with the previous call letting the
 	// compositor know that we're one and the same
-	window = create_window(display, WINDOW_WIDTH_SIZE,
-			       WINDOW_HEIGHT_SIZE, role.c_str());
+	window = create_window(display, g_window_width,
+			       g_window_height, role.c_str());
 
 	if (!window)
 		return -1;
