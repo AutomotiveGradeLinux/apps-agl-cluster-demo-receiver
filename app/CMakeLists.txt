@@ -32,8 +32,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(PkgConfig REQUIRED)
 find_program(WAYLAND_SCANNER_EXECUTABLE NAMES wayland-scanner)
 
-pkg_check_modules(AGL_COMPOSITOR_PROTOCOLS REQUIRED agl-compositor-0.0.20-protocols)
-pkg_get_variable(AGL_COMPOSITOR_PROTOCOLS_PKGDATADIR agl-compositor-0.0.20-protocols pkgdatadir)
+pkg_check_modules(AGL_COMPOSITOR_PROTOCOLS REQUIRED agl-compositor-0.0.21-protocols)
+pkg_get_variable(AGL_COMPOSITOR_PROTOCOLS_PKGDATADIR agl-compositor-0.0.21-protocols pkgdatadir)
 set(AGL_COMPOSITOR_PROTOCOLS_PATH ${AGL_COMPOSITOR_PROTOCOLS_PKGDATADIR})
 
 add_custom_command(
