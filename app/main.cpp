@@ -1,5 +1,5 @@
 /*
- * Copyright © 2020 Collabora, Ltd.
+ * Copyright © 2020, 2024 Collabora, Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files (the
@@ -41,13 +41,15 @@
 #include <glib.h>
 
 #include "xdg-shell-client-protocol.h"
-#include "agl-shell-desktop-client-protocol.h"
 #include "zalloc.h"
 
 #include <gst/gst.h>
 
 #include <gst/video/videooverlay.h>
 #include <gst/wayland/wayland.h>
+
+#include "AglShellGrpcClient.h"
+
 
 #if !GST_CHECK_VERSION(1, 22, 0)
 #define gst_is_wl_display_handle_need_context_message gst_is_wayland_display_handle_need_context_message
@@ -84,7 +86,6 @@ struct display {
 	} output_data;
 
 	struct xdg_wm_base *wm_base;
-	struct agl_shell_desktop *agl_shell_desktop;
 
 	int has_xrgb;
 };
@@ -127,7 +128,7 @@ static void
 redraw(void *data, struct wl_callback *callback, uint32_t time);
 
 static void
-paint_pixels(void *image, int padding, int width, int height, uint32_t time)
+paint_pixels(void *image, int width, int height)
 {
 	memset(image, 0x00, width * height * 4);
 }
@@ -136,6 +137,8 @@ static void
 buffer_release(void *data, struct wl_buffer *buffer)
 {
 	struct buffer *mybuf = static_cast<struct buffer *>(data);
+	(void) buffer;
+
 	mybuf->busy = 0;
 }
 
@@ -359,6 +362,7 @@ redraw(void *data, struct wl_callback *callback, uint32_t time)
 {
         struct window *window = static_cast<struct window *>(data);
         struct buffer *buffer;
+	(void) time;
 
         buffer = get_next_buffer(window);
         if (!buffer) {
@@ -369,7 +373,7 @@ redraw(void *data, struct wl_callback *callback, uint32_t time)
         }
 
 	// do the actual painting
-	paint_pixels(buffer->shm_data, 0x0, window->width, window->height, time);
+	paint_pixels(buffer->shm_data, window->width, window->height);
 
         wl_surface_attach(window->surface, buffer->buffer, 0, 0);
         wl_surface_damage(window->surface, 0, 0, window->width, window->height);
@@ -388,6 +392,7 @@ static void
 shm_format(void *data, struct wl_shm *wl_shm, uint32_t format)
 {
 	struct display *d = static_cast<struct display *>(data);
+	(void) wl_shm;
 
 	if (format == WL_SHM_FORMAT_XRGB8888)
 		d->has_xrgb = true;
@@ -400,6 +405,7 @@ static const struct wl_shm_listener shm_listener = {
 static void
 xdg_wm_base_ping(void *data, struct xdg_wm_base *shell, uint32_t serial)
 {
+	(void) data;
         xdg_wm_base_pong(shell, serial);
 }
 
@@ -429,6 +435,7 @@ display_handle_mode(void *data, struct wl_output *wl_output, uint32_t flags,
 		    int width, int height, int refresh)
 {
 	struct display *d = static_cast<struct display *>(data);
+	(void) refresh;
 
 	if (wl_output == d->wl_output && (flags & WL_OUTPUT_MODE_CURRENT)) {
 		d->output_data.width = width;
@@ -454,38 +461,29 @@ display_handle_done(void *data, struct wl_output *wl_output)
 	(void) wl_output;
 }
 
+static void
+display_handle_name(void *data, struct wl_output *wl_output, const char *name)
+{
+	(void) data;
+	(void) wl_output;
+	(void) name;
+}
+
+static void
+display_handle_desc(void *data, struct wl_output *wl_output, const char *desc)
+{
+	(void) data;
+	(void) wl_output;
+	(void) desc;
+}
+
 static const struct wl_output_listener output_listener = {
 	display_handle_geometry,
 	display_handle_mode,
 	display_handle_done,
-	display_handle_scale
-};
-
-static void
-application_id(void *data, struct agl_shell_desktop *agl_shell_desktop,
-		const char *app_id)
-{
-	(void) data;
-	(void) agl_shell_desktop;
-	(void) app_id;
-}
-
-static void
-application_id_state(void *data, struct agl_shell_desktop *agl_shell_desktop,
-		     const char *app_id, const char *app_data,
-		     uint32_t app_state, uint32_t app_role)
-{
-        (void) data;
-        (void) app_data;
-        (void) agl_shell_desktop;
-        (void) app_id;
-        (void) app_state;
-        (void) app_role;
-}
-
-static const struct agl_shell_desktop_listener agl_shell_desktop_listener = {
-        application_id,
-        application_id_state,
+	display_handle_scale,
+	display_handle_name,
+	display_handle_desc,
 };
 
 static void
@@ -493,6 +491,7 @@ registry_handle_global(void *data, struct wl_registry *registry, uint32_t id,
 		       const char *interface, uint32_t version)
 {
 	struct display *d = static_cast<struct display *>(data);
+	(void) version;
 
 	if (strcmp(interface, "wl_compositor") == 0) {
 		d->wl_compositor =
@@ -506,12 +505,6 @@ registry_handle_global(void *data, struct wl_registry *registry, uint32_t id,
 		d->shm = static_cast<struct wl_shm *>(wl_registry_bind(registry,
 				id, &wl_shm_interface, 1));
 		wl_shm_add_listener(d->shm, &shm_listener, d);
-	} else if (strcmp(interface, "agl_shell_desktop") == 0) {
-		d->agl_shell_desktop = static_cast<struct agl_shell_desktop *>(wl_registry_bind(registry, id,
-						        &agl_shell_desktop_interface, 1));
-		/* as an example, show how to register for events from the compositor */
-		agl_shell_desktop_add_listener(d->agl_shell_desktop,
-					       &agl_shell_desktop_listener, d);
 	} else if (strcmp(interface, "wl_output") == 0) {
 		d->wl_output = static_cast<struct wl_output *>(wl_registry_bind(registry, id,
 					     &wl_output_interface, 1));
@@ -536,6 +529,7 @@ static const struct wl_registry_listener registry_listener = {
 static void
 error_cb(GstBus *bus, GstMessage *msg, gpointer user_data)
 {
+	(void) bus;
 	struct cluster_receiver_data *d =
 		static_cast<struct cluster_receiver_data *>(user_data);
 
@@ -558,6 +552,7 @@ error_cb(GstBus *bus, GstMessage *msg, gpointer user_data)
 static GstBusSyncReply
 bus_sync_handler(GstBus *bus, GstMessage *message, gpointer user_data)
 {
+	(void) bus;
 	struct cluster_receiver_data *d =
 		static_cast<struct cluster_receiver_data *>(user_data);
 
@@ -623,6 +618,7 @@ handle_xdg_toplevel_configure(void *data, struct xdg_toplevel *xdg_toplevel,
 {
 	struct window *window = static_cast<struct window *>(data);
 	uint32_t *p;
+	(void) xdg_toplevel;
 
 	window->fullscreen = 0;
 	window->maximized = 0;
@@ -670,12 +666,37 @@ handle_xdg_toplevel_configure(void *data, struct xdg_toplevel *xdg_toplevel,
 static void
 handle_xdg_toplevel_close(void *data, struct xdg_toplevel *xdg_toplevel)
 {
+	(void) xdg_toplevel;
+	(void) data;
 	running = 0;
 }
+
+static void
+handle_xdg_toplevel_configure_bounds(void *data, struct xdg_toplevel *xdg_toplevel,
+                                     int32_t width, int32_t height)
+{
+	(void) data;
+	(void) xdg_toplevel;
+	(void) width;
+	(void) height;
+}
+
+
+static void
+handle_xdg_toplevel_wm_caps(void *data, struct xdg_toplevel *xdg_toplevel, 
+			    struct wl_array *caps)
+{
+	(void) data;
+	(void) xdg_toplevel;
+	(void) caps;
+}
+
 
 static const struct xdg_toplevel_listener xdg_toplevel_listener = {
 	handle_xdg_toplevel_configure,
 	handle_xdg_toplevel_close,
+	handle_xdg_toplevel_configure_bounds,
+	handle_xdg_toplevel_wm_caps,
 };
 
 static struct window *
@@ -737,12 +758,19 @@ destroy_window(struct window *window)
 static void
 signal_int(int sig, siginfo_t *si, void *_unused)
 {
+	(void) sig;
+	(void) _unused;
+	(void) si;
+
 	running = 0;
 }
 
 static struct display *
 create_display(int argc, char *argv[])
 {
+	(void) argc;
+	(void) argv;
+
 	struct display *display;
 
 	display = static_cast<struct display *>(zalloc(sizeof(*display)));
@@ -761,11 +789,6 @@ create_display(int argc, char *argv[])
 
 	if (display->shm == NULL) {
 		fprintf(stderr, "No wl_shm global\n");
-		return NULL;
-	}
-
-	if (display->agl_shell_desktop == NULL) {
-		fprintf(stderr, "No agl_shell extension present\n");
 		return NULL;
 	}
 
@@ -788,9 +811,6 @@ destroy_display(struct display *display)
 	if (display->wm_base)
 		xdg_wm_base_destroy(display->wm_base);
 
-	if (display->agl_shell_desktop)
-		agl_shell_desktop_destroy(display->agl_shell_desktop);
-
 	if (display->wl_compositor)
 		wl_compositor_destroy(display->wl_compositor);
 
@@ -800,42 +820,42 @@ destroy_display(struct display *display)
 	free(display);
 }
 
-void read_config(void)
+void
+read_config(void)
 {
 	GKeyFile *conf_file;
 	gchar *value;
+	GError *err = NULL;
+
+	bool ret;
+	int n;
+	unsigned width, height, x, y;
 
 	// Load settings from configuration file if it exists
 	conf_file = g_key_file_new();
-	if(conf_file &&
-	   g_key_file_load_from_dirs(conf_file,
-				     "AGL.conf",
-				     (const gchar**) g_get_system_config_dirs(),
-				     NULL,
-				     G_KEY_FILE_KEEP_COMMENTS,
-				     NULL) == TRUE) {
-		GError *err = NULL;
-		value = g_key_file_get_string(conf_file,
-					      "receiver",
-					      "geometry",
-					      &err);
-		if(value) {
-			int n;
-			unsigned width, height, x, y;
-			n = sscanf(value, "%ux%u+%u,%u", &width, &height, &x, &y);
-			if (n == 4) {
-				g_window_width = width;
-				g_window_height = height;
-				g_window_pos_x = x;
-				g_window_pos_y = y;
-				printf("Using window geometry %dx%d+%d,%d",
-				       g_window_width, g_window_height, g_window_pos_x, g_window_pos_y);
-			} else {
-				fprintf(stderr, "Invalid value for \"geometry\" key!");
-			}
-		} else {
-			fprintf(stderr, "Invalid value for \"geometry\" key!");
-		}
+
+	ret = g_key_file_load_from_dirs(conf_file, "AGL.conf",
+					(const gchar**) g_get_system_config_dirs(),
+					NULL, G_KEY_FILE_KEEP_COMMENTS, NULL);
+	if (!ret)
+		return;
+
+	value = g_key_file_get_string(conf_file, "receiver", "geometry", &err);
+	if (!value) {
+		return;
+	}
+
+	n = sscanf(value, "%ux%u+%u,%u", &width, &height, &x, &y);
+	if (n == 4) {
+		g_window_width = width;
+		g_window_height = height;
+		g_window_pos_x = x;
+		g_window_pos_y = y;
+		fprintf(stdout, "Using window geometry %dx%d+%d,%d\n",
+				g_window_width, g_window_height,
+				g_window_pos_x, g_window_pos_y);
+	} else {
+		fprintf(stderr, "Invalid value for \"geometry\" key\n!");
 	}
 }
 
@@ -847,7 +867,8 @@ int main(int argc, char *argv[])
 	struct display *display;
 	struct window *window;
 
-	std::string role = "receiver";
+	std::string role = "cluster-receiver";
+	GrpcClient *client = new GrpcClient();
 
 	sa.sa_sigaction = signal_int;
 	sigemptyset(&sa.sa_mask);
@@ -875,20 +896,17 @@ int main(int argc, char *argv[])
 	if (!display)
 		return -1;
 
-	// this will set-up the x and y position and a bounding box that will
-	// be used to clip out the surface. Note, that in this example, the
-	// surface area is the same as the bounding box.
-	agl_shell_desktop_set_app_property(display->agl_shell_desktop, role.c_str(),
-					   AGL_SHELL_DESKTOP_APP_ROLE_POPUP,
-					   g_window_pos_x, g_window_pos_y,
-					   0, 0, g_window_width, g_window_height,
-					   display->wl_output);
+
+	// this will set-up the x and y position to the same app as this one.
+	// Note, that in this example, the surface area is the same as the
+	// output dimensions streamed by the remote compositor
+	client->SetAppFloat(role, g_window_pos_x, g_window_pos_y);
 
 	// we use the role to set a correspondence between the top level
 	// surface and our application, with the previous call letting the
 	// compositor know that we're one and the same
-	window = create_window(display, g_window_width,
-			       g_window_height, role.c_str());
+	//
+	window = create_window(display, g_window_width, g_window_height, role.c_str());
 
 	if (!window)
 		return -1;
@@ -929,5 +947,7 @@ int main(int argc, char *argv[])
 
 	gst_element_set_state(pipeline, GST_STATE_NULL);
 	gst_object_unref(pipeline);
+	delete client;
+
 	return ret;
 }
