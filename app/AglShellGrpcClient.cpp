@@ -20,7 +20,7 @@ namespace {
 	const char kDefaultGrpcServiceAddress[] = "127.0.0.1:14005";
 }
 
-GrpcClient::GrpcClient()
+GrpcClient::GrpcClient(bool wait_for_ready)
 {
 	int retries = 10;
 	struct timespec ts;
@@ -33,6 +33,8 @@ GrpcClient::GrpcClient()
 
 	ts.tv_nsec = 500 * 1000 * 1000;
 	ts.tv_sec = 0;
+	wait_for_ready_ = wait_for_ready;
+	deadline_ = std::chrono::milliseconds(2000);
 
 	auto state = channel->GetState(true);
 	// artificial delay otherwise to be sure req calls succeed
@@ -61,6 +63,10 @@ GrpcClient::ActivateApp(const std::string& app_id, const std::string& output_nam
 
 	grpc::ClientContext context;
 	::agl_shell_ipc::ActivateResponse reply;
+	if (wait_for_ready_) {
+		context.set_wait_for_ready(true);
+		context.set_deadline(std::chrono::system_clock::now() + deadline_);
+	}
 
 	grpc::Status status = m_stub->ActivateApp(&context, request, &reply);
 	return status.ok();
@@ -75,6 +81,10 @@ GrpcClient::DeactivateApp(const std::string& app_id)
 
 	grpc::ClientContext context;
 	::agl_shell_ipc::DeactivateResponse reply;
+	if (wait_for_ready_) {
+		context.set_wait_for_ready(true);
+		context.set_deadline(std::chrono::system_clock::now() + deadline_);
+	}
 
 	grpc::Status status = m_stub->DeactivateApp(&context, request, &reply);
 	return status.ok();
@@ -92,6 +102,11 @@ GrpcClient::SetAppFloat(const std::string& app_id, int32_t x_pos, int32_t y_pos)
 	grpc::ClientContext context;
 	::agl_shell_ipc::FloatResponse reply;
 
+	if (wait_for_ready_) {
+		context.set_wait_for_ready(true);
+		context.set_deadline(std::chrono::system_clock::now() + deadline_);
+	}
+
 	grpc::Status status = m_stub->SetAppFloat(&context, request, &reply);
 	return status.ok();
 }
@@ -105,6 +120,10 @@ GrpcClient::SetAppNormal(const std::string& app_id)
 
 	grpc::ClientContext context;
 	::agl_shell_ipc::NormalResponse reply;
+	if (wait_for_ready_) {
+		context.set_wait_for_ready(true);
+		context.set_deadline(std::chrono::system_clock::now() + deadline_);
+	}
 
 	grpc::Status status = m_stub->SetAppNormal(&context, request, &reply);
 	return status.ok();
@@ -119,6 +138,10 @@ GrpcClient::SetAppFullscreen(const std::string& app_id)
 
 	grpc::ClientContext context;
 	::agl_shell_ipc::FullscreenResponse reply;
+	if (wait_for_ready_) {
+		context.set_wait_for_ready(true);
+		context.set_deadline(std::chrono::system_clock::now() + deadline_);
+	}
 
 	grpc::Status status = m_stub->SetAppFullscreen(&context, request, &reply);
 	return status.ok();
@@ -134,6 +157,10 @@ GrpcClient::SetAppOnOutput(const std::string& app_id, const std::string &output)
 
 	grpc::ClientContext context;
 	::agl_shell_ipc::AppOnOutputResponse reply;
+	if (wait_for_ready_) {
+		context.set_wait_for_ready(true);
+		context.set_deadline(std::chrono::system_clock::now() + deadline_);
+	}
 
 	grpc::Status status = m_stub->SetAppOnOutput(&context, request, &reply);
 	return status.ok();
@@ -150,6 +177,10 @@ GrpcClient::SetAppPosition(const std::string& app_id, int32_t x, int32_t y)
 
 	grpc::ClientContext context;
 	::agl_shell_ipc::AppPositionResponse reply;
+	if (wait_for_ready_) {
+		context.set_wait_for_ready(true);
+		context.set_deadline(std::chrono::system_clock::now() + deadline_);
+	}
 
 	grpc::Status status = m_stub->SetAppPosition(&context, request, &reply);
 	return status.ok();
@@ -166,6 +197,10 @@ GrpcClient::SetAppScale(const std::string& app_id, int32_t width, int32_t height
 
 	grpc::ClientContext context;
 	::agl_shell_ipc::AppScaleResponse reply;
+	if (wait_for_ready_) {
+		context.set_wait_for_ready(true);
+		context.set_deadline(std::chrono::system_clock::now() + deadline_);
+	}
 
 	grpc::Status status = m_stub->SetAppScale(&context, request, &reply);
 	return status.ok();
@@ -186,6 +221,10 @@ GrpcClient::SetAppSplit(const std::string& app_id, uint32_t orientation,
 
 	grpc::ClientContext context;
 	::agl_shell_ipc::SplitResponse reply;
+	if (wait_for_ready_) {
+		context.set_wait_for_ready(true);
+		context.set_deadline(std::chrono::system_clock::now() + deadline_);
+	}
 
 	grpc::Status status = m_stub->SetAppSplit(&context, request, &reply);
 	return status.ok();
@@ -211,6 +250,10 @@ GrpcClient::GetOutputs()
 
 	::agl_shell_ipc::OutputRequest request;
 	::agl_shell_ipc::ListOutputResponse response;
+	if (wait_for_ready_) {
+		context.set_wait_for_ready(true);
+		context.set_deadline(std::chrono::system_clock::now() + deadline_);
+	}
 
 	grpc::Status status = m_stub->GetOutputs(&context, request, &response);
 	if (!status.ok())

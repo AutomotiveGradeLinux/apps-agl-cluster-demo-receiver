@@ -868,7 +868,7 @@ int main(int argc, char *argv[])
 	struct window *window;
 
 	std::string role = "cluster-receiver";
-	GrpcClient *client = new GrpcClient();
+	GrpcClient *client = new GrpcClient(true);
 
 	sa.sa_sigaction = signal_int;
 	sigemptyset(&sa.sa_mask);

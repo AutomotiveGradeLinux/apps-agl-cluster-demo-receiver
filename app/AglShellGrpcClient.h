@@ -13,6 +13,7 @@
 #include <grpcpp/health_check_service_interface.h>
 
 #include "agl_shell.grpc.pb.h"
+#include <chrono>
 
 typedef void (*Callback)(agl_shell_ipc::AppStateResponse app_response);
 
@@ -88,7 +89,7 @@ private:
 
 class GrpcClient {
 public:
-	GrpcClient();
+	GrpcClient(bool wait_for_ready);
 	bool ActivateApp(const std::string& app_id, const std::string& output_name);
 	bool DeactivateApp(const std::string& app_id);
 	bool SetAppFloat(const std::string& app_id, int32_t x_pos, int32_t y_pos);
@@ -106,6 +107,8 @@ public:
 
 private:
 	Reader *reader;
+	bool wait_for_ready_{false};
+	std::chrono::milliseconds deadline_;
 	std::unique_ptr<agl_shell_ipc::AglShellManagerService::Stub> m_stub;
 };
 
